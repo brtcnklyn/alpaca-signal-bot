@@ -1,0 +1,13 @@
+2026-07-21 18:33:48,525 | INFO | Hesap durumu: bakiye(cash)=100000 | portfoy degeri=100000 | DRY_RUN=False | AUTO_SELECT=True
+2026-07-21 18:33:48,656 | INFO | AUTO_SELECT aktif: 50 hisse taraniyor...
+2026-07-21 18:33:58,069 | INFO | [TARAMA] AAPL: skor=15.0 verdict=BEKLE
+2026-07-21 18:33:58,070 | INFO | [TARAMA] META: skor=15.0 verdict=BEKLE
+2026-07-21 18:33:58,071 | INFO | [TARAMA] V: skor=15.0 verdict=BEKLE
+2026-07-21 18:33:58,071 | INFO | [TARAMA] MA: skor=15.0 verdict=BEKLE
+2026-07-21 18:33:58,071 | INFO | [TARAMA] IBM: skor=12.5 verdict=BEKLE
+2026-07-21 18:33:58,072 | INFO | [TARAMA] HD: skor=12.5 verdict=BEKLE
+2026-07-21 18:33:58,072 | INFO | [TARAMA] CAT: skor=12.5 verdict=BEKLE
+2026-07-21 18:33:58,073 | INFO | [TARAMA] GE: skor=12.5 verdict=BEKLE
+2026-07-21 18:33:58,075 | INFO | [TARAMA] WMT: skor=5.0 verdict=BEKLE
+2026-07-21 18:33:58,075 | INFO | [TARAMA] COST: skor=5.0 verdict=BEKLE
+2026-07-21 18:33:58,076 | INFO | AUTO_SELECT: kosullari saglayan (guclu AL sinyali veren) hisse bulunamadi.
