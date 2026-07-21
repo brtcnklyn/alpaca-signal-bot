@@ -1,0 +1,47 @@
+name: Daily Signal Bot
+
+on:
+  schedule:
+    # Pazartesi-Cuma, 21:30 UTC -> ABD borsa kapanisindan (16:00 ET) sonra
+    # (yaz/kis saati farkini tolere etmek icin kapanistan biraz sonraya ayarlandi)
+    - cron: "30 21 * * 1-5"
+  workflow_dispatch: {}  # GitHub arayuzunden "Run workflow" ile elle de tetiklenebilir
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Kodu indir
+        uses: actions/checkout@v4
+
+      - name: Python kur
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Bagimliliklari yukle
+        run: pip install -r requirements.txt
+
+      - name: Botu calistir
+        env:
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          TICKERS: "AAPL,MSFT,NVDA"
+          DRY_RUN: "false"
+          AUTO_SELECT: "true"
+          TOP_N: "3"
+          MAX_OPEN_POSITIONS: "5"
+          BUY_SCORE_THRESHOLD: "15"
+          SELL_SCORE_THRESHOLD: "-20"
+          ALLOCATION_PER_TRADE_USD: "200"
+          STOP_LOSS_PCT: "3"
+          TAKE_PROFIT_PCT: "6"
+          LOOKBACK_DAYS: "250"
+        run: python bot.py
+
+      - name: Log dosyasini sakla
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bot-log
+          path: bot_log.txt
