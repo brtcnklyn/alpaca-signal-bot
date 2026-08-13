@@ -40,7 +40,7 @@ jobs:
           ATR_TARGET_MULT: "4.0"
           STOP_LOSS_PCT: "3"
           TAKE_PROFIT_PCT: "6"
-          LOOKBACK_DAYS: "280"
+          LOOKBACK_DAYS: "330"  # ~330 takvim gunu ≈ 225+ islem gunu; SMA200 trend filtresi icin 200 bar sart
         run: python bot.py
 
       - name: Log dosyasini sakla

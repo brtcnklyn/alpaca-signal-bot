@@ -56,4 +56,4 @@ TREND_FILTER_ENABLED = os.getenv("TREND_FILTER_ENABLED", "true").lower() == "tru
 
 # Gösterge hesaplamak için geriye dönük kaç günlük veri çekilecek
 # (SMA200 + ATR/MACD seed payi icin >=260 onerilir)
-LOOKBACK_DAYS = int(os.getenv("LOOKBACK_DAYS", "280"))
+LOOKBACK_DAYS = int(os.getenv("LOOKBACK_DAYS", "330"))

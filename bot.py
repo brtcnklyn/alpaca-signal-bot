@@ -17,8 +17,8 @@ from datetime import datetime, timedelta
 
 import pandas as pd
 from alpaca.trading.client import TradingClient
-from alpaca.trading.requests import MarketOrderRequest, TakeProfitRequest, StopLossRequest
-from alpaca.trading.enums import OrderSide, TimeInForce, OrderClass
+from alpaca.trading.requests import MarketOrderRequest, TakeProfitRequest, StopLossRequest, GetOrdersRequest
+from alpaca.trading.enums import OrderSide, TimeInForce, OrderClass, QueryOrderStatus
 from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.requests import StockBarsRequest
 from alpaca.data.timeframe import TimeFrame
@@ -102,6 +102,14 @@ def place_sell(trading_client: TradingClient, ticker: str):
     if config.DRY_RUN:
         log.info(f"[{ticker}] DRY_RUN: mevcut pozisyon KAPATILIRDI (SAT).")
         return
+    # Bracket emrin acik TP/SL bacaklari hisseleri kilitler ("held_for_orders");
+    # once bu sembole ait acik emirler iptal edilmezse close_position 403 doner.
+    open_orders = trading_client.get_orders(
+        GetOrdersRequest(status=QueryOrderStatus.OPEN, symbols=[ticker])
+    )
+    for o in open_orders:
+        trading_client.cancel_order_by_id(o.id)
+        log.info(f"[{ticker}] Acik emir iptal edildi: {o.id} ({o.order_type} {o.side})")
     trading_client.close_position(ticker)
     log.info(f"[{ticker}] Pozisyon kapatildi (SAT).")
 
