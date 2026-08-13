@@ -20,4 +20,9 @@ UNIVERSE = [
     "XOM", "CVX", "CAT", "BA", "GE",
     # ETF (opsiyonel, genel piyasa yönü için)
     "SPY", "QQQ",
+    # Genellikle dusuk fiyatli, likit buyuk/orta olcekli hisseler
+    # (fiyatlar zamanla degisir, MAX_STOCK_PRICE filtresi asil filtreyi anlik fiyata gore yapar)
+    "F", "T", "BAC", "WFC", "PFE", "KO", "CSCO", "INTC", "SOFI", "PLTR",
+    "NIO", "RIVN", "LCID", "SNAP", "PARA", "WBD", "VALE", "ITUB", "UBER", "GRAB",
+    "AAL", "CCL", "NCLH", "KMI", "NU", "PBR", "GOLD", "M", "GAP", "KSS",
 ]

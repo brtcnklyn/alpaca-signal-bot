@@ -1,13 +1,14 @@
 """
 bot.py
-Alpaca PAPER TRADING hesabında, gunluk teknik sinyale gore otomatik alim/satim yapan bot.
+Alpaca PAPER TRADING hesabinda, gunluk teknik sinyale gore otomatik alim/satim yapan bot.
 
 ONEMLI:
 - Bu bot yatirim tavsiyesi vermez, finansal danisman degildir.
 - Gostergeler GUNLUK veriye dayanir -> gunde 1 kez, piyasa kapanisina yakin calistirilmalidir.
-- Once DRY_RUN=true ile GUNLERCE izle, sinyallerin mantikli oldugunu gor, sonra DRY_RUN=false yap.
-- Bu script sadece PAPER (sanal para) hesaba baglanir (paper=True). Gercek hesaba gecis
-  ayri, bilincli bir adimdir ve bu dosyada yapilmaz.
+- Bu script sadece PAPER (sanal) hesaba baglanir (paper=True).
+- Birkac haftalik sonuca bakip strateji hakkinda kesin yargida bulunmak istatistiksel
+  olarak yaniltici olabilir - kisa vadeli gurultu ile gercek performansi ayirt etmek
+  onemli sayida islem/gun gerektirir.
 """
 
 import logging
@@ -47,8 +48,7 @@ def get_price_history(data_client: StockHistoricalDataClient, ticker: str) -> pd
     bars = data_client.get_stock_bars(request)
     df = bars.df.reset_index()
     df = df[df["symbol"] == ticker].sort_values("timestamp")
-    df = df.rename(columns={"close": "close"})
-    return df[["timestamp", "close"]].reset_index(drop=True)
+    return df[["timestamp", "close", "high", "low"]].reset_index(drop=True)
 
 
 def get_open_qty(trading_client: TradingClient, ticker: str) -> float:
@@ -59,17 +59,30 @@ def get_open_qty(trading_client: TradingClient, ticker: str) -> float:
         return 0.0
 
 
-def place_buy(trading_client: TradingClient, ticker: str, price: float):
+def compute_stop_take(price: float, atr_val):
+    """ATR varsa ATR bazli, yoksa sabit yuzde bazli stop/hedef doner."""
+    if config.USE_ATR_STOPS and atr_val is not None and atr_val > 0:
+        stop_price = price - config.ATR_STOP_MULT * atr_val
+        take_price = price + config.ATR_TARGET_MULT * atr_val
+        method = f"ATR bazli (ATR={atr_val:.2f})"
+    else:
+        stop_price = price * (1 - config.STOP_LOSS_PCT / 100)
+        take_price = price * (1 + config.TAKE_PROFIT_PCT / 100)
+        method = "sabit yuzde bazli"
+    return round(max(stop_price, 0.01), 2), round(take_price, 2), method
+
+
+def place_buy(trading_client: TradingClient, ticker: str, price: float, atr_val=None):
     qty = math.floor(config.ALLOCATION_PER_TRADE_USD / price)
     if qty < 1:
         log.info(f"[{ticker}] Ayrilan tutar ({config.ALLOCATION_PER_TRADE_USD} USD) 1 adet almaya yetmiyor, atlaniyor.")
         return
-    stop_price = round(price * (1 - config.STOP_LOSS_PCT / 100), 2)
-    take_price = round(price * (1 + config.TAKE_PROFIT_PCT / 100), 2)
+
+    stop_price, take_price, method = compute_stop_take(price, atr_val)
 
     if config.DRY_RUN:
         log.info(f"[{ticker}] DRY_RUN: {qty} adet ALIM yapilirdi @ ~{price:.2f} "
-                  f"(stop-loss {stop_price}, take-profit {take_price})")
+                  f"(stop {stop_price} / hedef {take_price}, {method})")
         return
 
     order = MarketOrderRequest(
@@ -82,7 +95,7 @@ def place_buy(trading_client: TradingClient, ticker: str, price: float):
         stop_loss=StopLossRequest(stop_price=stop_price),
     )
     trading_client.submit_order(order)
-    log.info(f"[{ticker}] ALIM emri gonderildi: {qty} adet @ piyasa (stop {stop_price} / hedef {take_price})")
+    log.info(f"[{ticker}] ALIM emri gonderildi: {qty} adet @ piyasa (stop {stop_price} / hedef {take_price}, {method})")
 
 
 def place_sell(trading_client: TradingClient, ticker: str):
@@ -103,7 +116,8 @@ def run_once():
 
     account = trading_client.get_account()
     log.info(f"Hesap durumu: bakiye(cash)={account.cash} | portfoy degeri={account.portfolio_value} | "
-             f"DRY_RUN={config.DRY_RUN} | AUTO_SELECT={config.AUTO_SELECT}")
+             f"DRY_RUN={config.DRY_RUN} | AUTO_SELECT={config.AUTO_SELECT} | "
+             f"TREND_FILTER={config.TREND_FILTER_ENABLED} | ATR_STOPS={config.USE_ATR_STOPS}")
 
     open_positions = trading_client.get_all_positions()
     held_tickers = {p.symbol for p in open_positions}
@@ -115,11 +129,12 @@ def run_once():
             if len(df) < 20:
                 log.warning(f"[{ticker}] Yetersiz veri, satis kontrolu atlandi.")
                 continue
-            signal = build_signal(df)
+            signal = build_signal(df, config.TREND_FILTER_ENABLED)
             qty_held = get_open_qty(trading_client, ticker)
             log.info(
                 f"[{ticker}] (ELDE VAR) skor={signal['composite']} verdict={signal['verdict']} "
-                f"son_fiyat={signal['last_close']:.2f} pozisyon={qty_held} | {signal['details']}"
+                f"trend={signal['trend_state']} son_fiyat={signal['last_close']:.2f} pozisyon={qty_held} | "
+                f"{signal['details']}"
             )
             if signal["composite"] <= config.SELL_SCORE_THRESHOLD:
                 place_sell(trading_client, ticker)
@@ -133,23 +148,27 @@ def run_once():
         return
 
     if config.AUTO_SELECT:
-        log.info(f"AUTO_SELECT aktif: {len(UNIVERSE)} hisse taraniyor...")
-        scan_results = scan_universe(get_price_history, data_client, UNIVERSE)
+        log.info(f"AUTO_SELECT aktif: {len(UNIVERSE)} hisse taraniyor "
+                 f"(BUY_SCORE_THRESHOLD={config.BUY_SCORE_THRESHOLD}, MAX_STOCK_PRICE={config.MAX_STOCK_PRICE})...")
+        scan_results = scan_universe(get_price_history, data_client, UNIVERSE, config.TREND_FILTER_ENABLED)
         top_n = min(config.TOP_N, slots_available)
-        candidates = pick_buy_candidates(scan_results, top_n, held_tickers, config.BUY_SCORE_THRESHOLD)
+        candidates = pick_buy_candidates(
+            scan_results, top_n, held_tickers, config.BUY_SCORE_THRESHOLD, config.MAX_STOCK_PRICE
+        )
 
         for r in scan_results[:10]:
             s = r["signal"]
-            log.info(f"[TARAMA] {r['ticker']}: skor={s['composite']} verdict={s['verdict']}")
+            log.info(f"[TARAMA] {r['ticker']}: skor={s['composite']} verdict={s['verdict']} "
+                     f"trend={s['trend_state']} fiyat={s['last_close']:.2f}")
 
         if not candidates:
-            log.info("AUTO_SELECT: kosullari saglayan (guclu AL sinyali veren) hisse bulunamadi.")
+            log.info("AUTO_SELECT: kosullari saglayan (skor+fiyat filtresi) hisse bulunamadi.")
         for c in candidates:
             ticker = c["ticker"]
             signal = c["signal"]
             log.info(f"[{ticker}] (SECILDI) skor={signal['composite']} verdict={signal['verdict']} "
-                     f"son_fiyat={signal['last_close']:.2f} | {signal['details']}")
-            place_buy(trading_client, ticker, signal["last_close"])
+                     f"trend={signal['trend_state']} son_fiyat={signal['last_close']:.2f} | {signal['details']}")
+            place_buy(trading_client, ticker, signal["last_close"], signal.get("atr"))
     else:
         for ticker in config.TICKERS:
             if ticker in held_tickers:
@@ -159,15 +178,17 @@ def run_once():
                 if len(df) < 20:
                     log.warning(f"[{ticker}] Yetersiz veri ({len(df)} gun), atlaniyor.")
                     continue
-                signal = build_signal(df)
+                signal = build_signal(df, config.TREND_FILTER_ENABLED)
                 log.info(
                     f"[{ticker}] skor={signal['composite']} verdict={signal['verdict']} "
-                    f"son_fiyat={signal['last_close']:.2f} | {signal['details']}"
+                    f"trend={signal['trend_state']} son_fiyat={signal['last_close']:.2f} | {signal['details']}"
                 )
-                if signal["composite"] >= config.BUY_SCORE_THRESHOLD:
-                    place_buy(trading_client, ticker, signal["last_close"])
+                if signal["composite"] >= config.BUY_SCORE_THRESHOLD and (
+                    config.MAX_STOCK_PRICE <= 0 or signal["last_close"] <= config.MAX_STOCK_PRICE
+                ):
+                    place_buy(trading_client, ticker, signal["last_close"], signal.get("atr"))
                 else:
-                    log.info(f"[{ticker}] Islem yok (BEKLE).")
+                    log.info(f"[{ticker}] Islem yok (BEKLE ya da fiyat filtresine takildi).")
             except Exception as e:
                 log.exception(f"[{ticker}] Hata: {e}")
 

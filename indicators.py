@@ -50,3 +50,22 @@ def last_two(series: pd.Series):
     if len(valid) == 1:
         return float(valid.iloc[-1]), None
     return float(valid.iloc[-1]), float(valid.iloc[-2])
+
+
+def atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
+    """
+    Average True Range - hissenin gunluk ortalama fiyat dalgalanmasi (volatilite).
+    df icinde 'high', 'low', 'close' sutunlari olmali.
+    Turtle Traders ve pek cok kurumsal trend-takip sistemi, sabit yuzdeli
+    stop-loss yerine ATR'a gore stop/hedef belirler - boylece volatil bir hissede
+    stop cok siki, sakin bir hissede cok gevsek olmaz.
+    """
+    high = df["high"]
+    low = df["low"]
+    close = df["close"]
+    prev_close = close.shift(1)
+    tr1 = high - low
+    tr2 = (high - prev_close).abs()
+    tr3 = (low - prev_close).abs()
+    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+    return tr.ewm(alpha=1 / period, min_periods=period, adjust=False).mean()

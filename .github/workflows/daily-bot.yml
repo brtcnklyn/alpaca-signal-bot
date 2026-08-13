@@ -2,8 +2,9 @@ name: Daily Signal Bot
 
 on:
   schedule:
+    # Pazartesi-Cuma, 21:30 UTC -> ABD borsa kapanisindan (16:00 ET) sonra
     - cron: "30 21 * * 1-5"
-  workflow_dispatch: {}
+  workflow_dispatch: {}  # GitHub arayuzunden "Run workflow" ile elle de tetiklenebilir
 
 jobs:
   run-bot:
@@ -31,10 +32,15 @@ jobs:
           MAX_OPEN_POSITIONS: "10"
           BUY_SCORE_THRESHOLD: "15"
           SELL_SCORE_THRESHOLD: "-20"
+          MAX_STOCK_PRICE: "50"
           ALLOCATION_PER_TRADE_USD: "10000"
+          TREND_FILTER_ENABLED: "true"
+          USE_ATR_STOPS: "true"
+          ATR_STOP_MULT: "2.0"
+          ATR_TARGET_MULT: "4.0"
           STOP_LOSS_PCT: "3"
           TAKE_PROFIT_PCT: "6"
-          LOOKBACK_DAYS: "250"
+          LOOKBACK_DAYS: "280"
         run: python bot.py
 
       - name: Log dosyasini sakla

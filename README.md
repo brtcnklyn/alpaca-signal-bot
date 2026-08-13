@@ -71,6 +71,9 @@ copy .env.example .env    # Windows
   (daha fazla "yanlış pozitif" riski) — bu bir denge tercihi, garanti artış değil.
 - `SELL_SCORE_THRESHOLD` (varsayılan -20) — elde tutulan bir pozisyon için kompozit
   skor bu değerin altına inerse satış tetiklenir.
+- `MAX_STOCK_PRICE` (varsayılan 50) — bu fiyatın üstündeki hisseler alım adayı
+  sayılmaz. Küçük `ALLOCATION_PER_TRADE_USD` ile en az 1 adet alabilmek için
+  kullanılır. 0 = filtre yok.
 
 **Not:** Elde tuttuğun pozisyonlar `AUTO_SELECT` açık olsa da olmasa da her
 çalıştırmada satış sinyali için ayrıca kontrol edilir — yani taramanın dışında
@@ -145,7 +148,29 @@ Bot şu anda **sadece paper (sanal) hesaba** bağlanacak şekilde yazıldı (`pa
 Gerçek hesaba geçiş, Alpaca'da ayrı bir KYC/onay süreci gerektirir ve bilinçli,
 ayrı bir adım olarak ele alınmalıdır.
 
-## Sınırlamalar (dürüstçe)
+## Strateji güncellemesi — kurumsal trend-takip prensipleri
+
+Sistem, tanınmış trend-takip yaklaşımlarından (Turtle Traders, Paul Tudor Jones,
+Ed Seykota tarzı sistemler) iki önemli prensiple güçlendirildi:
+
+1. **Ana trend filtresi (SMA200):** Fiyat 200 günlük ortalamanın altındaysa —
+   yani hisse uzun vadeli düşüş rejimindeyse — AL sinyalleri bastırılır. "Düşen
+   bıçağı yakalamaya çalışmak" yerine, sadece ana trendle aynı yönde işlem
+   açılır. `TREND_FILTER_ENABLED=false` ile kapatılabilir.
+2. **ATR (volatilite) bazlı stop-loss/hedef:** Sabit %3/%6 yerine, her hissenin
+   kendi güncel oynaklığına (Average True Range) göre stop mesafesi hesaplanır
+   — volatil bir hissede stop çok sıkı, sakin bir hissede çok gevşek olmaz.
+   Varsayılan: stop = giriş − 2×ATR, hedef = giriş + 4×ATR (2:1 kazanç/risk
+   oranı). `USE_ATR_STOPS=false` ile eski sabit yüzde yöntemine dönülebilir.
+
+**Dürüst bir not:** Bu değişiklikler sistemi daha "kurallı" ve disiplinli hale
+getirir, ama **hiçbir teknik gösterge kombinasyonu kâr garantisi vermez.**
+Birkaç haftalık/aylık sonuca bakıp strateji hakkında kesin yargıya varmak
+istatistiksel olarak güvenilir değildir — kısa vadede en iyi stratejiler bile
+kayıpta olabilir. Anlamlı bir değerlendirme için genellikle çok daha uzun bir
+gözlem süresi (aylar, onlarca işlem) gerekir.
+
+
 
 - Göstergeler gecikmeli (lagging) ve gün içi/anlık al-sat için tasarlanmadı.
 - Ücretsiz Alpaca veri planı IEX beslemesini kullanır, SIP (tam piyasa) verisine göre

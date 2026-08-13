@@ -1,31 +1,47 @@
 """
 strategy.py
 Fiyat verisinden kompozit al/sat/bekle sinyali üretir.
-Aynı mantık: SIGNAL DESK panelinde kullandığımız SMA / RSI / MACD / Bollinger skorlaması.
-Bu göstergeler GÜNLÜK kapanış verisine dayanır -> gün içi (intraday) karar için uygun değildir.
+Temel: SMA / RSI / MACD / Bollinger skorlamasi, artik iki ek katmanla:
+
+1. ANA TREND FILTRESI (SMA200): Fiyat 200 gunluk ortalamanin altindaysa (uzun
+   vadeli dusus rejimi) ALIM sinyalleri bastirilir. "The trend is your friend"
+   - Ed Seykota, Paul Tudor Jones ve pek cok kurumsal trend-takip sisteminin
+   temel prensibi: dususte olan bir varlikta "ucuzladi" diye almak, teknik
+   analiz acisindan zayif bir gerekcedir.
+2. ATR (volatilite): Turtle Traders tarzi sistemlerin kullandigi gibi, stop-loss
+   ve hedef mesafesini hissenin kendi oynakligina gore ayarlamak icin.
+
+Bu gostergeler GUNLUK kapanis verisine dayanir -> gun ici (intraday) karar icin
+uygun degildir.
 """
 
 import pandas as pd
-from indicators import sma, rsi, macd, bollinger, last_two
+from indicators import sma, rsi, macd, bollinger, atr, last_two
 
 
-def build_signal(df: pd.DataFrame) -> dict:
+def build_signal(df: pd.DataFrame, trend_filter_enabled: bool = True) -> dict:
     """
-    df: 'close' sütunu olan, eskiden yeniye sıralı bir DataFrame.
-    Dönüş: composite skor (-100..100), verdict (metin), ve gösterge detayları.
+    df: 'close' (ve mumkunse 'high','low') sutunlari olan, eskiden yeniye sirali DataFrame.
+    Donus: composite skor (-100..100), verdict, gosterge detaylari, atr degeri.
     """
     closes = df["close"]
 
     sma20 = sma(closes, 20)
     sma50 = sma(closes, 50)
+    sma200 = sma(closes, 200)
     r = rsi(closes, 14)
     _, _, hist = macd(closes)
     upper, mid, lower = bollinger(closes, 20, 2.0)
 
+    atr_val = None
+    if "high" in df.columns and "low" in df.columns:
+        atr_series = atr(df, 14)
+        atr_val, _ = last_two(atr_series)
+
     scores = {}
     details = {}
 
-    # --- SMA trend / kesişim ---
+    # --- SMA trend / kesişim (20 vs 50) ---
     s20, s20_prev = last_two(sma20)
     s50, s50_prev = last_two(sma50)
     if s20 is not None and s50 is not None:
@@ -116,6 +132,28 @@ def build_signal(df: pd.DataFrame) -> dict:
     else:
         composite = 0.0
 
+    # --- ANA TREND FILTRESI (SMA200) ---
+    trend_state = "unknown"
+    s200, _ = last_two(sma200)
+    if trend_filter_enabled and s200 is not None:
+        if last_close < s200:
+            trend_state = "dusus"
+            if composite > 0:
+                details["trend_filter"] = (
+                    f"UYARI: Fiyat SMA200'un altinda ({last_close:.2f} < {s200:.2f}) - "
+                    f"ana trend dusus, AL sinyali bastirildi"
+                )
+                composite = min(composite, 0.0)
+            else:
+                details["trend_filter"] = f"Fiyat SMA200'un altinda ({last_close:.2f} < {s200:.2f}) - dusus rejimi"
+        else:
+            trend_state = "yukselis"
+            details["trend_filter"] = f"Fiyat SMA200'un ustunde ({last_close:.2f} > {s200:.2f}) - yukselis rejimi"
+    elif not trend_filter_enabled:
+        details["trend_filter"] = "Trend filtresi kapali (TREND_FILTER_ENABLED=false)"
+    else:
+        details["trend_filter"] = "SMA200 icin yetersiz veri (>=200 gun gerekli), filtre uygulanmadi"
+
     if composite >= 50:
         verdict = "GUCLU_AL"
     elif composite >= 20:
@@ -134,4 +172,6 @@ def build_signal(df: pd.DataFrame) -> dict:
         "scores": scores,
         "details": details,
         "data_points": len(closes),
+        "atr": atr_val,
+        "trend_state": trend_state,
     }
