@@ -1,0 +1,31 @@
+name: Backtest (elle calistir)
+
+# Actions sekmesi -> "Backtest (elle calistir)" -> Run workflow.
+# Sonuc Telegram'a gelir, dosyalar Artifacts altinda.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Backtest
+        env:
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          python run_backtest.py
+          python -c "from telegram_rapor import send; send('<b>📊 Backtest</b>\n<pre>' + open('backtest_rapor.txt', encoding='utf-8').read() + '</pre>')"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: backtest-sonuclari
+          path: backtest_*

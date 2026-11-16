@@ -1,0 +1,43 @@
+name: Gun Ici AI Trader
+
+# ABD seansi kis: 14:30-21:00 UTC, yaz: 13:30-20:00 UTC.
+# GitHub bir isi en fazla 6 saat calistirabildigi icin seans iki parcaya bolundu.
+# Ayni anda iki kopya calismaz (concurrency); ikinci parca birincinin bitmesini bekler.
+on:
+  schedule:
+    - cron: "20 13 * * 1-5"   # 1. parca: acilistan once baslar, acilisi bekler
+    - cron: "10 19 * * 1-5"   # 2. parca: kapanisa kadar
+  workflow_dispatch: {}
+
+concurrency:
+  group: trader
+  cancel-in-progress: false
+
+jobs:
+  trade:
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Botu calistir
+        env:
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          PAPER: "true"   # gercek para icin: "false" yap VE asagidaki komuta --live-onay ekle
+        run: python live_trader.py --max-dakika 340
+      - name: Loglari sakla
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trader-log-${{ github.run_id }}
+          path: |
+            bot_log.txt
+            islemler.csv
+          if-no-files-found: ignore

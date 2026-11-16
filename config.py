@@ -1,59 +1,55 @@
+"""Bot ayarları. Anahtarlar .env veya ortam değişkenlerinden okunur, koda yazılmaz."""
 import os
-from dotenv import load_dotenv
+from dataclasses import dataclass, field
 
-load_dotenv()
 
-ALPACA_API_KEY = os.getenv("ALPACA_API_KEY", "")
-ALPACA_SECRET_KEY = os.getenv("ALPACA_SECRET_KEY", "")
+def _load_env(path=".env"):
+    if os.path.exists(path):
+        for line in open(path, encoding="utf-8"):
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                k, v = line.split("=", 1)
+                os.environ.setdefault(k.strip(), v.strip())
 
-# Virgülle ayrılmış hisse listesi, örn: "AAPL,MSFT,NVDA"
-# AUTO_SELECT=true iken bu liste yalnizca "elde tut / izlemeye devam et" icin yedek olarak kullanilir,
-# yeni alimlar universe.py taramasindan gelir.
-TICKERS = [t.strip().upper() for t in os.getenv("TICKERS", "AAPL").split(",") if t.strip()]
 
-# True ise: bot her calistiginda universe.py listesini tarar, en guclu AL sinyali veren
-# TOP_N hisseyi kendi secer. False ise: sadece yukaridaki TICKERS listesine bakar.
-AUTO_SELECT = os.getenv("AUTO_SELECT", "false").lower() == "true"
+_load_env()
 
-# AUTO_SELECT=true iken ayni anda en fazla kac YENI pozisyon acilabilir
-TOP_N = int(os.getenv("TOP_N", "3"))
 
-# AUTO_SELECT=true iken ayni anda toplamda en fazla kac ACIK pozisyon olabilir
-MAX_OPEN_POSITIONS = int(os.getenv("MAX_OPEN_POSITIONS", "10"))
+@dataclass
+class Config:
+    # --- Alpaca ---
+    api_key: str = os.getenv("ALPACA_API_KEY", "")
+    secret_key: str = os.getenv("ALPACA_SECRET_KEY", "")
+    # Varsayılan SANAL hesap. Gerçek para için .env'de PAPER=false VE
+    # komutta --live-onay vermek gerekir (çift kilit).
+    paper: bool = os.getenv("PAPER", "true").lower() != "false"
 
-# Kompozit skor bu esigin USTUNDE ise ALIM adayi sayilir.
-BUY_SCORE_THRESHOLD = float(os.getenv("BUY_SCORE_THRESHOLD", "15"))
+    # --- Evren: likit, spread'i dar hisse/ETF'ler ---
+    symbols: list = field(default_factory=lambda: [
+        "SPY", "QQQ", "AAPL", "MSFT", "NVDA", "AMZN", "META", "GOOGL", "AMD", "TSLA",
+    ])
+    bar_minutes: int = 5           # 5 dakikalık mumlar
+    history_days: int = 120        # model eğitimi için geçmiş
 
-# Kompozit skor bu esigin ALTINDA ise elde tutulan pozisyon icin SATIS tetiklenir.
-SELL_SCORE_THRESHOLD = float(os.getenv("SELL_SCORE_THRESHOLD", "-20"))
+    # --- Model / sinyal ---
+    horizon_bars: int = 6          # 6 bar (=30 dk) sonrasını tahmin et
+    long_threshold: float = 0.58   # yükseliş olasılığı bu eşiği geçerse al
+    exit_threshold: float = 0.48   # bunun altına düşerse pozisyonu kapat
+    retrain_every_days: int = 5
 
-# 0'dan buyukse: bu fiyatin USTUNDEKI hisseler alim adayi olarak degerlendirilmez.
-# Kucuk sermayeyle en az 1 adet alabilmek icin kullanilir. 0 = filtre yok.
-MAX_STOCK_PRICE = float(os.getenv("MAX_STOCK_PRICE", "0"))
+    # --- Risk (en önemli kısım) ---
+    risk_per_trade: float = 0.005  # işlem başına sermayenin %0.5'i riske
+    max_position_pct: float = 0.15 # tek hissede en fazla %15
+    max_open_positions: int = 4
+    stop_atr_mult: float = 1.5     # stop = giriş - 1.5*ATR
+    take_profit_atr_mult: float = 2.5
+    daily_loss_limit: float = 0.02 # gün içi %2 kayıpta bot o gün durur
+    max_drawdown_kill: float = 0.10# zirveden %10 düşüşte bot tamamen durur
+    flatten_minutes_before_close: int = 10  # kapanıştan önce hepsini kapat
 
-# True iken bot GERÇEK/PAPER EMİR GÖNDERMEZ, sadece ne yapacağını loglar.
-DRY_RUN = os.getenv("DRY_RUN", "true").lower() == "true"
+    # --- Maliyet varsayımları (backtest) ---
+    commission_per_share: float = 0.0
+    slippage_bps: float = 2.0      # her işlemde 2 baz puan kayma
 
-# Her pozisyon için ayrılacak yaklaşık dolar tutarı
-ALLOCATION_PER_TRADE_USD = float(os.getenv("ALLOCATION_PER_TRADE_USD", "10000"))
 
-# --- Risk yönetimi ---
-# ATR (volatilite) tabanlı stop/hedef kullanilsin mi? Turtle Traders ve pek cok
-# kurumsal trend-takip sisteminin kullandigi yontem: sabit yuzde yerine hissenin
-# kendi gunluk oynakligina gore stop mesafesi belirler.
-USE_ATR_STOPS = os.getenv("USE_ATR_STOPS", "true").lower() == "true"
-ATR_STOP_MULT = float(os.getenv("ATR_STOP_MULT", "2.0"))     # stop = giris - 2*ATR
-ATR_TARGET_MULT = float(os.getenv("ATR_TARGET_MULT", "4.0")) # hedef = giris + 4*ATR (2:1 kazanc/risk)
-
-# ATR verisi yoksa (yetersiz gecmis) bu sabit yuzdelere geri duser
-STOP_LOSS_PCT = float(os.getenv("STOP_LOSS_PCT", "3"))
-TAKE_PROFIT_PCT = float(os.getenv("TAKE_PROFIT_PCT", "6"))
-
-# Ana trend filtresi: fiyat SMA200'un altindaysa (uzun vadeli dusus trendi) ALIM
-# sinyalleri bastirilir. "The trend is your friend" - Ed Seykota, Paul Tudor Jones
-# ve pek cok trend-takip sisteminin temel prensibi.
-TREND_FILTER_ENABLED = os.getenv("TREND_FILTER_ENABLED", "true").lower() == "true"
-
-# Gösterge hesaplamak için geriye dönük kaç günlük veri çekilecek
-# (SMA200 + ATR/MACD seed payi icin >=260 onerilir)
-LOOKBACK_DAYS = int(os.getenv("LOOKBACK_DAYS", "330"))
+CFG = Config()
