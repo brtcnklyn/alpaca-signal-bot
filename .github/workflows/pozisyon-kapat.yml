@@ -1,0 +1,40 @@
+name: Tum Pozisyonlari Kapat (elle, SANAL)
+
+# Sanal hesaptaki tum acik pozisyonlari ve bekleyen emirleri kapatir.
+# paper=True sabit: gercek hesaba dokunmaz.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  kapat:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Kapat
+        env:
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          python - <<'EOF'
+          import os, time
+          from alpaca.trading.client import TradingClient
+          from telegram_rapor import send
+          tc = TradingClient(os.environ["ALPACA_API_KEY"], os.environ["ALPACA_SECRET_KEY"], paper=True)
+          before = tc.get_all_positions()
+          print("Kapatilacak:", [(p.symbol, p.qty, p.unrealized_pl) for p in before])
+          for r in tc.close_all_positions(cancel_orders=True):
+              print(r.symbol, r.status)
+          time.sleep(20)
+          left = tc.get_all_positions()
+          acct = tc.get_account()
+          print("Kalan pozisyon:", [p.symbol for p in left], "| ozsermaye:", acct.equity)
+          lines = "\n".join(f"  • {p.symbol} x{p.qty}: ${float(p.unrealized_pl):+,.2f}" for p in before)
+          send(f"🧹 <b>Eski pozisyonlar kapatildi</b> (SANAL)\n{lines}\nKalan: {len(left)} | Ozsermaye ${float(acct.equity):,.2f}")
+          EOF
