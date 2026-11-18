@@ -78,8 +78,9 @@ def main():
             clock = tc.get_clock()
             if not clock.is_open:
                 wait = (clock.next_open - clock.timestamp).total_seconds()
-                if args.max_dakika and wait > 3 * 3600:
-                    log("Bugünkü seans bitti, çıkılıyor.")
+                # Bu çalıştırmanın süresi içinde açılış yoksa bekleme, çık (bir sonraki tetikleme yakalar)
+                if args.max_dakika and wait > 5 * 3600:
+                    log(f"Açılışa {wait / 3600:.1f} saat var, bu çalıştırma bekleyemez; çıkılıyor.")
                     return
                 log(f"Piyasa kapalı. {wait / 3600:.1f} saat sonra açılış.")
                 time.sleep(min(max(wait, 60), 1800))
