@@ -1,17 +1,22 @@
 name: Gun Ici AI Trader
 
 # ABD seansi kis: 14:30-21:00 UTC, yaz: 13:30-20:00 UTC.
-# GitHub bir isi en fazla 6 saat calistirabildigi icin seans iki parcaya bolundu.
-# Ayni anda iki kopya calismaz (concurrency); ikinci parca birincinin bitmesini bekler.
+# GitHub zamanlayicisi (cron) saatlerce gecikebildigi icin gunluk baslatma
+# kullanicinin bilgisayarindaki Windows Gorev Zamanlayicisindan workflow_dispatch ile yapilir.
+# Bir is en fazla 6 saat surebildigi icin, seans devam ederken biten calistirma
+# kendini yeniden tetikler (zincir). Cron sadece yedek.
 on:
   schedule:
-    - cron: "20 13 * * 1-5"   # 1. parca: acilistan once baslar, acilisi bekler
-    - cron: "10 19 * * 1-5"   # 2. parca: kapanisa kadar
+    - cron: "17 13 * * 1-5"
   workflow_dispatch: {}
 
 concurrency:
   group: trader
   cancel-in-progress: false
+
+permissions:
+  actions: write
+  contents: read
 
 jobs:
   trade:
@@ -31,7 +36,29 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           PAPER: "true"   # gercek para icin: "false" yap VE asagidaki komuta --live-onay ekle
-        run: python live_trader.py --max-dakika 340
+        run: |
+          date +%s > .bot_baslangic
+          python live_trader.py --max-dakika 330
+      - name: Seans suruyorsa zinciri devam ettir
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+        run: |
+          gecen=$(( $(date +%s) - $(cat .bot_baslangic 2>/dev/null || date +%s) ))
+          # Bot hemen coktuyse sonsuz dongu olmasin: en az 30 dk calismis olmali
+          if [ "$gecen" -lt 1800 ]; then echo "Bot $gecen sn calisti, zincir yok."; exit 0; fi
+          devam=$(python - <<'EOF'
+          import os
+          from alpaca.trading.client import TradingClient
+          c = TradingClient(os.environ["ALPACA_API_KEY"], os.environ["ALPACA_SECRET_KEY"], paper=True).get_clock()
+          kalan = (c.next_close - c.timestamp).total_seconds() / 60
+          print("evet" if c.is_open and kalan > 15 else "hayir")
+          EOF
+          )
+          echo "Seans devam: $devam"
+          if [ "$devam" = "evet" ]; then gh workflow run trader.yml -R "$GITHUB_REPOSITORY"; fi
       - name: Loglari sakla
         if: always()
         uses: actions/upload-artifact@v4

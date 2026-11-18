@@ -93,6 +93,7 @@ def main():
                 clf = M.train(hist)
                 M.save(clf)
                 last_train = today
+                tg(f"📈 Bot seansta, tarama başladı ({mode}). Özsermaye ${float(tc.get_account().equity):,.2f}")
 
             acct = tc.get_account()
             equity = float(acct.equity)
