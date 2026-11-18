@@ -57,7 +57,8 @@ def latest_probs(clf, feats, now, max_age_min):
 def fmt_tune(th, info):
     if not info:
         return f"eşik {th:.2f}"
-    return (f"eşik {th:.2f} = en güçlü %{info['top']*100:g} sinyal (son 5 günde bu eşikle {info['n']} sinyal, "
+    mod = "🔍 KEŞİF MODU (kârlı dilim bulunamadı, öğrenmek için deniyor) " if info.get("kesif") else ""
+    return (f"{mod}eşik {th:.2f} = en güçlü %{info['top']*100:g} sinyal (son 5 günde bu eşikle {info['n']} sinyal, "
             f"ort. {info['mean']*100:+.3f}% maliyet sonrası, isabet %{info['win']*100:.0f})")
 
 

@@ -24,7 +24,8 @@ def train(df: pd.DataFrame) -> lgb.LGBMClassifier:
     return m
 
 
-def tune_threshold(df: pd.DataFrame, cost: float, val_days: int = 5, min_trades: int = 30):
+def tune_threshold(df: pd.DataFrame, cost: float, val_days: int = 5, min_trades: int = 30,
+                   explore_top: float = 0.02):
     """Kendini ayarlama: son 'val_days' günü ayırıp önceki günlerle eğitir, ayrılan günlerde
     en güçlü sinyallerin hangi diliminin (en iyi %1, %2, ... %20) maliyet sonrası en çok
     kazandırdığını bulur. Olasılıkların seviyesi etiket oranına bağlı olduğu için eşik sabit
@@ -51,9 +52,15 @@ def tune_threshold(df: pd.DataFrame, cost: float, val_days: int = 5, min_trades:
         if best is None or cand[0] > best[0]:
             best = cand
     exit_th = float(np.median(p))
-    if best is None:
-        th = float(np.quantile(p, 0.95))
-        return th, {"n": 0, "mean": 0.0, "win": 0.0, "top": 0.05, "exit": exit_th}
+    if best is None or best[3] <= 0:
+        # Keşif modu: hiçbir dilim maliyeti karşılamadı. Deneme hesabında yine de en güçlü
+        # %explore_top sinyalle işlem yapılır; sonuçlar learn.py ile sembol cezalarına döner.
+        th = float(np.quantile(p, 1 - explore_top))
+        sel = p > th
+        n = int(sel.sum())
+        mean = float(net[sel].mean()) if n else 0.0
+        win = float((net[sel] > 0).mean()) if n else 0.0
+        return th, {"n": n, "mean": mean, "win": win, "top": explore_top, "exit": exit_th, "kesif": True}
     return best[1], {"n": best[2], "mean": best[3], "win": best[4], "top": best[5], "exit": exit_th}
 
 
