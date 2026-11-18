@@ -32,7 +32,7 @@ def _usd(x):
     return f"{'+' if x >= 0 else '-'}${abs(x):,.2f}"
 
 
-def daily_report() -> str:
+def daily_report(title: str = "Gün Sonu Raporu", extra=None) -> str:
     from alpaca.trading.client import TradingClient
     from alpaca.trading.enums import QueryOrderStatus
     from alpaca.trading.requests import GetOrdersRequest, GetPortfolioHistoryRequest
@@ -91,7 +91,7 @@ def daily_report() -> str:
     mode = "🧪 SANAL" if CFG.paper else "💵 GERÇEK"
     icon = "🟢" if day_pnl >= 0 else "🔴"
     out = [
-        f"<b>{icon} Gün Sonu Raporu</b> — {datetime.now(timezone.utc):%d.%m.%Y} ({mode})",
+        f"<b>{icon} {title}</b> — {datetime.now(timezone.utc):%d.%m.%Y} ({mode})",
         "",
         f"<b>Günlük K/Z:</b> {_usd(day_pnl)} ({day_pct:+.2%})",
         f"<b>Özsermaye:</b> ${eq:,.2f}",
@@ -110,6 +110,9 @@ def daily_report() -> str:
             out.append(f"  • {p.symbol} x{p.qty}: {_usd(float(p.unrealized_pl))}")
     else:
         out.append("Açık pozisyon yok ✅")
+    if extra:
+        out.append("")
+        out.extend(extra)
     return "\n".join(out)
 
 
@@ -117,6 +120,9 @@ if __name__ == "__main__":
     if "--test" in sys.argv:
         ok = send("✅ Borsa botu Telegram bağlantısı çalışıyor.")
         sys.exit(0 if ok else 1)
-    msg = daily_report()
+    if "--ara" in sys.argv:
+        msg = daily_report(title="Anlık Durum Raporu", extra=["(Elle istenen ara rapor)"])
+    else:
+        msg = daily_report()
     print(msg)
     send(msg)

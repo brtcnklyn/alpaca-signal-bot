@@ -69,6 +69,7 @@ def main():
     errors = 0
     cb.new_day(float(acct.last_equity))
     current_day = None
+    scans, mid_sent, session_min = 0, None, None
 
     while True:
         if args.max_dakika and (time.time() - started) / 60 >= args.max_dakika:
@@ -105,6 +106,13 @@ def main():
             if today != current_day:
                 current_day = today
                 cb.new_day(float(acct.last_equity))
+                scans, session_min = 0, None
+                try:  # bugünkü seans uzunluğu (erken kapanış günleri için)
+                    from alpaca.trading.requests import GetCalendarRequest
+                    cal = tc.get_calendar(GetCalendarRequest(start=today, end=today))[0]
+                    session_min = (cal.close - cal.open).total_seconds() / 60
+                except Exception as e:
+                    log(f"Takvim alınamadı: {e!r}")
             status = cb.check(equity)
 
             mins_to_close = (clock.next_close - clock.timestamp).total_seconds() / 60
@@ -161,6 +169,21 @@ def main():
                 if not getattr(cb, "_halt_sent", None) == today:
                     tg(f"⚠️ Günlük zarar limiti (%{CFG.daily_loss_limit*100:.0f}) doldu. Bugün yeni işlem açılmayacak.")
                     cb._halt_sent = today
+
+            scans += 1
+            # Gün ortası raporu: seansın yarısında bir kez (yeniden başlatmada tekrar atmasın diye 30 dk pencere)
+            half = (session_min or 390) / 2
+            if mid_sent != today and half - 30 < mins_to_close <= half:
+                mid_sent = today
+                try:
+                    from telegram_rapor import daily_report
+                    top = latest.sort_values("prob", ascending=False).head(3)
+                    extra = [f"<b>Bot çalışıyor</b> ✅ Bu çalıştırmada {scans} tarama yapıldı (5 dk'da bir).",
+                             f"Alım eşiği {CFG.long_threshold:.2f} | şu an en yüksek: "
+                             + ", ".join(f"{s} {p:.2f}" for s, p in top["prob"].items())]
+                    tg(daily_report(title="Gün Ortası Raporu", extra=extra))
+                except Exception as e:
+                    log(f"Gün ortası raporu gönderilemedi: {e!r}")
 
             log(f"Özsermaye ${equity:,.2f} | açık pozisyon {len(positions)} | durum {status}")
         except Exception as e:  # ağ hatası vb. botu öldürmesin
