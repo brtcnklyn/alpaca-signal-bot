@@ -44,7 +44,7 @@ def daily_report(title: str = "Gün Sonu Raporu", extra=None) -> str:
     day_pct = day_pnl / prev if prev else 0
 
     # Bugün dolan emirler -> sembol bazında gerçekleşen k/z (FIFO yaklaşık)
-    since = datetime.now(timezone.utc) - timedelta(hours=18)
+    since = datetime.now(timezone.utc) - timedelta(hours=24)
     orders = tc.get_orders(GetOrdersRequest(status=QueryOrderStatus.CLOSED, after=since, limit=500, nested=True))
     fills = []
     def walk(o):

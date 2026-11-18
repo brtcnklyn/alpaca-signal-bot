@@ -24,6 +24,39 @@ def train(df: pd.DataFrame) -> lgb.LGBMClassifier:
     return m
 
 
+def tune_threshold(df: pd.DataFrame, cost: float, val_days: int = 5, min_trades: int = 30):
+    """Kendini ayarlama: son 'val_days' günü ayırıp önceki günlerle eğitir, ayrılan günlerde
+    en güçlü sinyallerin hangi diliminin (en iyi %1, %2, ... %20) maliyet sonrası en çok
+    kazandırdığını bulur. Olasılıkların seviyesi etiket oranına bağlı olduğu için eşik sabit
+    sayı değil, bu dilimin olasılık değeridir. (eşik, bilgi) döndürür; bilgi['exit'] çıkış eşiği."""
+    d = df.dropna(subset=FEATURES + ["label", "fwd_ret"])
+    dates = np.array(d.index.get_level_values("timestamp").date)
+    days = sorted(set(dates))
+    if len(days) <= val_days + 10:
+        return None, None
+    cut = days[-val_days]
+    tr, va = d[dates < cut], d[dates >= cut]
+    m = train(tr)
+    p = m.predict_proba(va[FEATURES])[:, 1]
+    net = va["fwd_ret"].values - 2 * cost
+    best = None
+    for top in (0.005, 0.01, 0.02, 0.03, 0.05, 0.08, 0.12, 0.20):
+        th = float(np.quantile(p, 1 - top))
+        sel = p > th
+        n = int(sel.sum())
+        if n < min_trades:
+            continue
+        mean = float(net[sel].mean())
+        cand = (mean * n, th, n, mean, float((net[sel] > 0).mean()), top)
+        if best is None or cand[0] > best[0]:
+            best = cand
+    exit_th = float(np.median(p))
+    if best is None:
+        th = float(np.quantile(p, 0.95))
+        return th, {"n": 0, "mean": 0.0, "win": 0.0, "top": 0.05, "exit": exit_th}
+    return best[1], {"n": best[2], "mean": best[3], "win": best[4], "top": best[5], "exit": exit_th}
+
+
 def walk_forward(df: pd.DataFrame, train_days=40, test_days=5) -> pd.DataFrame:
     """Kaydırmalı pencere: 40 gün eğit -> sonraki 5 günü tahmin et -> kaydır."""
     days = np.array(sorted(set(df.index.get_level_values("timestamp").date)))

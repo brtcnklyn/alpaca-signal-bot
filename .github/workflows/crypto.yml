@@ -1,0 +1,61 @@
+name: Kripto AI Trader (7/24)
+
+# Kripto piyasasi hic kapanmaz. Bir is en fazla 6 saat surebildigi icin her calistirma
+# 330 dk sonra kendini yeniden tetikler (zincir). Cron sadece zincir koparsa yedektir.
+on:
+  schedule:
+    - cron: "41 */3 * * *"
+  workflow_dispatch:
+    inputs:
+      test:
+        description: "Tek tur deneme (zincir yok)"
+        type: boolean
+        default: false
+
+concurrency:
+  group: crypto
+  cancel-in-progress: false
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  trade:
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Kripto botunu calistir
+        env:
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          PAPER: "true"
+        run: |
+          date +%s > .bot_baslangic
+          python crypto_trader.py --max-dakika ${{ inputs.test && 1 || 330 }}
+      - name: Zinciri devam ettir
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gecen=$(( $(date +%s) - $(cat .bot_baslangic 2>/dev/null || date +%s) ))
+          # Bot hemen coktuyse sonsuz dongu olmasin: en az 30 dk calismis olmali (cron yedek)
+          if [ "$gecen" -lt 1800 ]; then echo "Bot $gecen sn calisti, zincir yok."; exit 0; fi
+          gh workflow run crypto.yml -R "$GITHUB_REPOSITORY"
+      - name: Loglari sakla
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: crypto-log-${{ github.run_id }}
+          path: |
+            bot_log.txt
+            islemler.csv
+          if-no-files-found: ignore

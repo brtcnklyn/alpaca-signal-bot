@@ -19,7 +19,7 @@ def _rsi(c, n=14):
     return 100 - 100 / (1 + up / (dn + 1e-12))
 
 
-def _one_symbol(g: pd.DataFrame) -> pd.DataFrame:
+def _one_symbol(g: pd.DataFrame, session: str = "us") -> pd.DataFrame:
     g = g.copy()
     c, h, l, o, v = g["close"], g["high"], g["low"], g["open"], g["volume"]
     lr = np.log(c).diff()
@@ -48,7 +48,10 @@ def _one_symbol(g: pd.DataFrame) -> pd.DataFrame:
     f["upper_wick"] = (h - np.maximum(c, o)) / rng
     f["lower_wick"] = (np.minimum(c, o) - l) / rng
     ts = g.index.get_level_values("timestamp")
-    f["minute_of_day"] = ((ts.hour * 60 + ts.minute) - 570) / 390
+    if session == "24h":   # kripto: gün boyu işlem, UTC
+        f["minute_of_day"] = (ts.hour * 60 + ts.minute) / 1440
+    else:                  # ABD seansı 09:30-16:00
+        f["minute_of_day"] = ((ts.hour * 60 + ts.minute) - 570) / 390
     day_open = o.groupby(day).transform("first")
     f["day_ret"] = c / day_open - 1
     f["atr"] = g["atr"]
@@ -56,8 +59,8 @@ def _one_symbol(g: pd.DataFrame) -> pd.DataFrame:
     return f
 
 
-def build_features(bars: pd.DataFrame) -> pd.DataFrame:
-    parts = [_one_symbol(g) for _, g in bars.groupby(level="symbol", group_keys=False)]
+def build_features(bars: pd.DataFrame, session: str = "us") -> pd.DataFrame:
+    parts = [_one_symbol(g, session) for _, g in bars.groupby(level="symbol", group_keys=False)]
     f = pd.concat(parts).sort_index()
     # Piyasa geneli (tüm evrenin ortalaması) ve göreli güç
     mkt = f.groupby(level="timestamp")["ret_6"].mean().rename("mkt_ret_6")
@@ -66,7 +69,7 @@ def build_features(bars: pd.DataFrame) -> pd.DataFrame:
     return f
 
 
-def add_label(f: pd.DataFrame, horizon: int) -> pd.DataFrame:
+def add_label(f: pd.DataFrame, horizon: int, cost: float = 0.0) -> pd.DataFrame:
     """Hedef: 'horizon' bar sonra, maliyet sonrası anlamlı yükseliş oldu mu? (aynı gün içinde)"""
     f = f.copy()
     ts = f.index.get_level_values("timestamp")
@@ -75,6 +78,8 @@ def add_label(f: pd.DataFrame, horizon: int) -> pd.DataFrame:
     fut = f.groupby(key.values)["close"].shift(-horizon)
     f["fwd_ret"] = fut / f["close"] - 1
     # Sadece gürültüyü geçen hareketleri pozitif say (0.25 ATR üstü)
-    f["label"] = (f["fwd_ret"] > 0.25 * f["atr"] / f["close"]).astype(float)
+    # ve gidiş-dönüş maliyetini (komisyon/kayma) karşılayan
+    need = np.maximum(0.25 * f["atr"] / f["close"], 2 * cost + 0.0005)
+    f["label"] = (f["fwd_ret"] > need).astype(float)
     f.loc[f["fwd_ret"].isna(), "label"] = np.nan
     return f
