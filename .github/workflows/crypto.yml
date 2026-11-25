@@ -38,6 +38,7 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           PAPER: "true"
+          GH_TOKEN: ${{ github.token }}   # seans oncesi hisse botunu tetiklemek icin
         run: |
           date +%s > .bot_baslangic
           python crypto_trader.py --max-dakika ${{ inputs.test && 1 || 330 }}

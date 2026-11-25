@@ -2,6 +2,8 @@
 Kripto için braket emir yok: stop / kâr al her 5 dakikada yazılımla kontrol edilir.
 Komisyon (tek yön ~%0.25) etiketlerde ve eşik ayarında hesaba katılır."""
 import argparse
+import os
+import subprocess
 import sys
 import time
 from datetime import datetime, timezone
@@ -23,6 +25,24 @@ def train_all(syms):
     th, info = M.tune_threshold(hist, CFG.crypto_cost, val_days=7, min_trades=20)
     clf = M.train(hist)
     return clf, (th if th is not None else CFG.long_threshold), info
+
+
+def kick_stock_bot(tc, state):
+    """GitHub cron'u güvenilmez (bazı günler hiç tetiklemiyor). 7/24 çalışan kripto botu,
+    ABD seansı açılmadan ~45 dk önce hisse botunu kendisi başlatır."""
+    repo = os.getenv("GITHUB_REPOSITORY")
+    if not repo or not os.getenv("GH_TOKEN"):
+        return
+    clock = tc.get_clock()
+    if clock.is_open:
+        return
+    mins = (clock.next_open - clock.timestamp).total_seconds() / 60
+    day = clock.next_open.date()
+    if 0 < mins <= 45 and state.get("kicked") != day:
+        state["kicked"] = day
+        r = subprocess.run(["gh", "workflow", "run", "trader.yml", "-R", repo],
+                           capture_output=True, text=True)
+        log(f"Hisse botu tetiklendi (açılışa {mins:.0f} dk): {(r.stdout or r.stderr).strip()[:150]}")
 
 
 def main():
@@ -61,6 +81,7 @@ def main():
     clf, th, trained_at, penalties = None, CFG.long_threshold, 0.0, {}
     exit_level = 0.0
     errors, loops, day = 0, 0, None
+    kick_state = {}
 
     while True:
         if args.max_dakika and (time.time() - started) / 60 >= args.max_dakika:
@@ -140,6 +161,10 @@ def main():
                              round(r["close"] + CFG.take_profit_atr_mult * r["atr"], 6), mode])
 
             loops += 1
+            try:
+                kick_stock_bot(tc, kick_state)
+            except Exception as e:
+                log(f"Hisse botu tetiklenemedi: {e!r}")
             if loops % 6 == 0:
                 penalties = learn.symbol_penalties(tc)
             top1 = latest["prob"].max() if len(latest) else float("nan")
