@@ -1,8 +1,7 @@
 name: Gun Sonu Telegram Raporu
 
 on:
-  schedule:
-    - cron: "20 21 * * 1-5"   # kapanistan sonra (TR saatiyle 00:20)
+  # Gun sonu raporunu artik nobetci.py gonderiyor; bu is sadece elle (ara rapor) calisir.
   workflow_dispatch:
     inputs:
       ara:

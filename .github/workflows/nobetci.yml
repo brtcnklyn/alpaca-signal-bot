@@ -1,0 +1,69 @@
+name: Trend Botu Nobetci (7/24)
+
+# Gunluk trend takibi botu. GitHub'in zamanlayicisi saatlerce gecikebildigi / bazen hic
+# calismadigi icin bir "nobetci" 7/24 zincir halinde calisir ve zamani gelince botu calistirir.
+# Her calistirma 330 dk sonra kendini yeniden tetikler; cron sadece zincir koparsa yedektir.
+on:
+  schedule:
+    - cron: "23 */3 * * *"
+  workflow_dispatch:
+    inputs:
+      durum:
+        description: "Onceki calistirmanin yaptiklari (zincir doldurur, elle bos birak)"
+        type: string
+        default: ""
+      test:
+        description: "Tek tur deneme (zincir yok)"
+        type: boolean
+        default: false
+
+concurrency:
+  group: nobetci
+  cancel-in-progress: false
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  nobet:
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Nobetciyi calistir
+        env:
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          PAPER: "true"
+          DURUM: ${{ inputs.durum }}
+        run: |
+          date +%s > .bot_baslangic
+          if [ "${{ inputs.test }}" = "true" ]; then
+            KURU=1 python trend_trader.py hepsi --sessiz   # emir gondermeden sinyalleri goster
+          else
+            python nobetci.py --max-dakika 330 --durum "$DURUM"
+          fi
+      - name: Zinciri devam ettir
+        if: always() && !inputs.test
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gecen=$(( $(date +%s) - $(cat .bot_baslangic 2>/dev/null || date +%s) ))
+          # Bot hemen coktuyse sonsuz dongu olmasin: en az 30 dk calismis olmali (cron yedek)
+          if [ "$gecen" -lt 1800 ]; then echo "Bot $gecen sn calisti, zincir yok."; exit 0; fi
+          gh workflow run nobetci.yml -R "$GITHUB_REPOSITORY" -f durum="$(cat .nobetci_durum 2>/dev/null)"
+      - name: Loglari sakla
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nobetci-log-${{ github.run_id }}
+          path: bot_log.txt
+          if-no-files-found: ignore

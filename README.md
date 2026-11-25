@@ -1,3 +1,18 @@
+# Alpaca Trend Botu (SANAL hesap)
+
+**2026-11-25 itibariyle aktif strateji: günlük trend takibi** (`trend.py`, `trend_trader.py`, `nobetci.py`).
+- Giriş: kapanış 55 günlük zirveyi kırar + 200 gün ortalamasının üstünde + piyasa filtresi (SPY / BTC > 200 gün ort.)
+- Çıkış: iz süren stop = son 22 günün en yükseği − 3×ATR
+- Hisse %70 / kripto %30 pay; pozisyon başına risk hisse %1, kripto %0.5
+- `nobetci.yml` 7/24 zincir halinde çalışır, zamanı gelince botu çalıştırır ve Telegram'a yazar.
+- Backtest (2011-2026, günlük, maliyet dahil): hisse yıllık %15.9, Sharpe 1.11, maks düşüş -%18 (SPY: %13.5 / 0.83 / -%34).
+  Uyarı: sembol listesi bugünün bilinen kazananlarını içerir; en çok kazanan 15 hisse çıkarılınca Sharpe 0.78.
+- Deneme: Actions → "Trend Botu Nobetci" → Run workflow → test (emir göndermeden sinyalleri gösterir).
+
+Eski gün içi (5 dk LightGBM) botlar `live_trader.py`, `crypto_trader.py` kapatıldı: 1 haftada -%5.8, testte maliyet sonrası zararda.
+
+---
+
 # Borsa Bot: ABD Hisseleri Gün İçi Yapay Zekâ Al-Sat
 
 LightGBM modeli (Microsoft Qlib'in Alpha158 özelliklerinden esinlenildi) + Alpaca API.
